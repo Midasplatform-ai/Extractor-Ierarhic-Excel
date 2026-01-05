@@ -1,48 +1,420 @@
-<!DOCTYPE html><html lang="ro"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Extractor Ierarhic Excel</title><script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script><style>*{margin:0;padding:0;box-sizing:border-box}body{font-family:'Segoe UI',Tahoma,Geneva,Verdana,sans-serif;background:linear-gradient(135deg,#667eea 0%,#764ba2 100%);min-height:100vh;display:flex;justify-content:center;align-items:center;padding:20px}.container{background:#fff;border-radius:20px;box-shadow:0 20px 60px rgba(0,0,0,.3);max-width:800px;width:100%;padding:40px}h1{color:#333;margin-bottom:10px;text-align:center;font-size:28px}.subtitle{color:#666;text-align:center;margin-bottom:30px;font-size:14px}.upload-area{border:3px dashed #667eea;border-radius:15px;padding:40px;text-align:center;cursor:pointer;transition:.3s;background:#f8f9fa;margin-bottom:20px}.upload-area:hover{border-color:#764ba2;background:#f0f1ff;transform:translateY(-2px)}.upload-area.dragover{border-color:#764ba2;background:#e8e9ff}.upload-icon{font-size:48px;margin-bottom:15px;color:#667eea}.upload-text{font-size:16px;color:#333;margin-bottom:8px}.upload-hint{font-size:13px;color:#999}input[type=file]{display:none}#status{padding:15px;border-radius:10px;margin:20px 0;font-size:14px;display:none}#status.info{background:#d1ecf1;color:#0c5460;border:1px solid #bee5eb;display:block}#status.success{background:#d4edda;color:#155724;border:1px solid #c3e6cb;display:block}#status.error{background:#f8d7da;color:#721c24;border:1px solid #f5c6cb;display:block}#status.warning{background:#fff3cd;color:#856404;border:1px solid #ffeaa7;display:block}.results{margin-top:25px}.coordinator-item{background:#f8f9fa;border:1px solid #e0e0e0;border-radius:10px;padding:15px;margin-bottom:12px;display:flex;justify-content:space-between;align-items:center;transition:.2s}.coordinator-item:hover{box-shadow:0 4px 12px rgba(0,0,0,.1);transform:translateX(5px)}.coordinator-info{flex:1}.coordinator-name{font-weight:600;color:#333;margin-bottom:5px;font-size:15px}.coordinator-code{font-size:12px;color:#666;font-family:'Courier New',monospace}.coordinator-count{background:#667eea;color:#fff;padding:5px 12px;border-radius:20px;font-size:13px;font-weight:600;margin-right:10px}.download-btn{background:linear-gradient(135deg,#667eea 0%,#764ba2 100%);color:#fff;border:none;padding:10px 20px;border-radius:8px;cursor:pointer;font-size:14px;font-weight:600;transition:.3s;box-shadow:0 4px 12px rgba(102,126,234,.4)}.download-btn:hover{transform:translateY(-2px);box-shadow:0 6px 16px rgba(102,126,234,.6)}.download-btn:active{transform:translateY(0)}.download-all-btn{width:100%;padding:15px;font-size:16px;margin-top:20px;background:linear-gradient(135deg,#f093fb 0%,#f5576c 100%)}.loader{border:3px solid #f3f3f3;border-top:3px solid #667eea;border-radius:50%;width:30px;height:30px;animation:spin 1s linear infinite;margin:20px auto;display:none}@keyframes spin{0%{transform:rotate(0)}100%{transform:rotate(360deg)}}.stats{background:linear-gradient(135deg,#667eea15 0%,#764ba215 100%);border-radius:10px;padding:20px;margin-top:20px;display:none}.stats-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:15px}.stat-item{text-align:center}.stat-value{font-size:28px;font-weight:700;color:#667eea;margin-bottom:5px}.stat-label{font-size:13px;color:#666}@media(max-width:600px){.container{padding:25px}h1{font-size:22px}.coordinator-item{flex-direction:column;align-items:flex-start}.coordinator-count{margin:10px 0}.download-btn{width:100%;margin-top:10px}}</style></head><body> <img src="https://i.pinimg.com/736x/47/8e/4e/478e4e95f4bf8d1452e92134e9f872fa.jpg" alt="Logo" style="position: fixed; top: 15px; left: 15px; width: 40px; height: 40px; border-radius: 8px; box-shadow: 0 4px 12px rgba(0,0,0,0.2);"><div class=container><h1>📊 Extractor Ierarhic Excel</h1><p class=subtitle>Încarcă fișierul Excel și descarcă fișiere separate pe nivele ierarhice</p><div class=upload-area id=uploadArea><div class=upload-icon>📁</div><div class=upload-text>Trage fișierul aici sau click pentru a selecta</div><div class=upload-hint>Format acceptat: .xlsx, .xls</div><input type=file id=fileInput accept=".xlsx,.xls"></div><div class=loader id=loader></div><div id=status></div><div class=stats id=stats><div class=stats-grid><div class=stat-item><div class=stat-value id=totalCoordinators>0</div><div class=stat-label>Coordonatori</div></div><div class=stat-item><div class=stat-value id=totalRows>0</div><div class=stat-label>Rânduri totale</div></div><div class=stat-item><div class=stat-value id=filesGenerated>0</div><div class=stat-label>Fișiere generate</div></div></div></div><div class=results id=results></div></div><script>
-const uploadArea=document.getElementById("uploadArea"),fileInput=document.getElementById("fileInput"),status=document.getElementById("status"),loader=document.getElementById("loader"),results=document.getElementById("results"),statsDiv=document.getElementById("stats");let processedData=[];
-uploadArea.addEventListener("click",()=>fileInput.click());
-uploadArea.addEventListener("dragover",e=>{e.preventDefault(),uploadArea.classList.add("dragover")});
-uploadArea.addEventListener("dragleave",()=>uploadArea.classList.remove("dragover"));
-uploadArea.addEventListener("drop",e=>{e.preventDefault(),uploadArea.classList.remove("dragover");const t=e.dataTransfer.files;t.length>0&&handleFile(t[0])});
-fileInput.addEventListener("change",e=>{e.target.files.length>0&&handleFile(e.target.files[0])});
-function showStatus(e,t){status.textContent=e,status.className=t}
-function showLoader(e){loader.style.display=e?"block":"none"}
-function handleFile(e){if(!e.name.match(/\.(xlsx|xls)$/))return void showStatus("❌ Te rog selectează un fișier Excel valid (.xlsx sau .xls)","error");showLoader(!0),showStatus("📖 Citesc fișierul...","info"),results.innerHTML="",statsDiv.style.display="none";const t=new FileReader;t.onload=t=>{try{processExcelFile(t.target.result,e.name)}catch(e){showLoader(!1),showStatus("❌ Eroare la procesarea fișierului: "+e.message,"error"),console.error(e)}},t.readAsArrayBuffer(e)}
-function normalizeNameForComparison(e){return e?String(e).trim().replace(/\.+$/g,"").replace(/\s+/g," ").replace(/-+/g,"-").toUpperCase():""}
-function processExcelFile(data,originalFileName){
-const workbook=XLSX.read(data,{type:"array"}),sheetName=workbook.SheetNames[0],worksheet=workbook.Sheets[sheetName],jsonData=XLSX.utils.sheet_to_json(worksheet,{header:1,defval:"",raw:!1});let headerRowIndex=-1;const requiredColumns=["Cod ccoordonator","Coordonator","Nume Prenume"];
-for(let e=0;e<Math.min(20,jsonData.length);e++){const t=jsonData[e];if(t&&t.length){const r=t.join("|").toLowerCase();if(requiredColumns.every(e=>r.includes(e.toLowerCase()))){headerRowIndex=e,showStatus(`🔍 Header găsit pe rândul ${e+1}`,"info");break}}}
-if(-1===headerRowIndex)return showLoader(!1),void showStatus("❌ Nu am găsit header-ul cu coloanele necesare în primele 20 rânduri.","error");
-const headers=jsonData[headerRowIndex],coordCodeColIndex=headers.indexOf("Cod ccoordonator"),coordNameColIndex=headers.indexOf("Coordonator"),nameColIndex=headers.indexOf("Nume Prenume");
-if(coordCodeColIndex<0||coordNameColIndex<0||nameColIndex<0)return showLoader(!1),void showStatus("❌ Nu am găsit coloanele necesare în fișier.","error");
-const dataRows=jsonData.slice(headerRowIndex+1),namesInNumePrenume=new Set,namesInCoordonator=new Set;
-dataRows.forEach(e=>{const t=normalizeNameForComparison(e[nameColIndex]),r=normalizeNameForComparison(e[coordNameColIndex]);t&&namesInNumePrenume.add(t),r&&namesInCoordonator.add(r)});
-const topLevelCoordinators=[...namesInCoordonator].filter(e=>!namesInNumePrenume.has(e));
-if(topLevelCoordinators.length<1)return showLoader(!1),void showStatus("❌ Nu am găsit coordonatori nivel top.","error");
-showStatus(`🔍 Găsite ${topLevelCoordinators.length} coordonatori nivel top`,"info");
-const allDirectReports={};topLevelCoordinators.forEach(top=>{dataRows.forEach((row,idx)=>{const coord=row[coordNameColIndex],person=row[nameColIndex];if(!person||""===String(person).trim())return;normalizeNameForComparison(coord)===top&&normalizeNameForComparison(person)&&(!allDirectReports[normalizeNameForComparison(person)]&&(allDirectReports[normalizeNameForComparison(person)]={originalName:person,reportsTo:top,allSubordinates:[]}))})});
-function getAllSubordinatesRecursive(coordinatorName,rows,nameIdx,coordIdx){const subs=[],norm=normalizeNameForComparison(coordinatorName);rows.forEach((r,ri)=>{const c=r[coordIdx],p=r[nameIdx];if(!p||""===String(p).trim())return;normalizeNameForComparison(c)===norm&&(subs.push({rowIndex:headerRowIndex+1+ri,rowData:r,personName:p}),subs.push(...getAllSubordinatesRecursive(p,rows,nameIdx,coordIdx)))});return subs}
-Object.keys(allDirectReports).forEach(e=>{const t=allDirectReports[e];t.allSubordinates=getAllSubordinatesRecursive(t.originalName,dataRows,nameColIndex,coordNameColIndex)});
-const filteredReports={};Object.keys(allDirectReports).forEach(e=>{const t=allDirectReports[e];t.allSubordinates.length>0&&(filteredReports[e]=t)});
-if(0===Object.keys(filteredReports).length)return showLoader(!1),void showStatus("⚠️ Nu există coordonatori cu echipe.","warning");
-processedData={topLevelCoordinators:topLevelCoordinators,directReports:filteredReports,headers:headers,originalWorkbook:workbook,originalFileName:originalFileName},displayResults(),showLoader(!1),showStatus(`✅ Fișier procesat cu succes! Găsite ${Object.keys(filteredReports).length} coordonatori cu echipe.`,"success");
-const totalSubordinates=Object.values(filteredReports).reduce((e,t)=>e+t.allSubordinates.length,0);
-document.getElementById("totalCoordinators").textContent=Object.keys(filteredReports).length,document.getElementById("totalRows").textContent=totalSubordinates,document.getElementById("filesGenerated").textContent=Object.keys(filteredReports).length,statsDiv.style.display="block"}
-function displayResults(){
-const{topLevelCoordinators:e,directReports:t}=processedData;let r="",o=e.slice(0,5).join(", ")+(e.length>5?`, ... (+${e.length-5} mai multe)`:"");
-r+=`<div class="coordinator-item" style="background:linear-gradient(135deg,#667eea15 0%,#764ba215 100%);border:2px solid #667eea"><div class=coordinator-info><div class=coordinator-name>📊 Coordonatori nivel top: ${e.length}</div><div class=coordinator-code>${escapeHtml(o)}</div></div></div>`;
-const n=Object.entries(t).sort((e,t)=>t[1].allSubordinates.length-e[1].allSubordinates.length);
-n.forEach(([e,t])=>{r+=`<div class=coordinator-item><div class=coordinator-info><div class=coordinator-name>${escapeHtml(t.originalName)}</div><div class=coordinator-code>Raportează la: ${escapeHtml(t.reportsTo)}</div></div><span class=coordinator-count>${t.allSubordinates.length} persoane total</span><button class=download-btn onclick="downloadCoordinatorFile('${escapeHtml(e)}')">⬇️ Descarcă</button></div>`}),r+=`<button class="download-btn download-all-btn" onclick="downloadAllFiles()">📦 Descarcă toate fișierele (${n.length})</button>`,results.innerHTML=r}
-function downloadCoordinatorFile(e){
-const{directReports:t,headers:r,originalWorkbook:o}=processedData,n=t[e];
-if(!n)return void showStatus("❌ Nu am găsit datele pentru acest coordonator.","error");
-const a=n.originalName,s=n.allSubordinates,i=XLSX.utils.book_new(),l=[r];
-s.forEach(e=>{l.push(e.rowData)});
-const d=XLSX.utils.aoa_to_sheet(l),c=o.Sheets[o.SheetNames[0]];
-c["!cols"]&&(d["!cols"]=c["!cols"]),XLSX.utils.book_append_sheet(i,d,"Date");const p=a.replace(/[^a-zA-Z0-9-_\s]/g,"_").replace(/\s+/g,"_")+".xlsx";
-XLSX.writeFile(i,p),showStatus(`✅ Fișier descărcat: ${p} (${s.length} persoane)`,`success`)}
-function downloadAllFiles(){
-const e=processedData.directReports;let t=0;
-showStatus("📦 Descarc toate fișierele...","info"),Object.keys(e).forEach((r,o)=>{setTimeout(()=>{downloadCoordinatorFile(r),++t===Object.keys(e).length&&showStatus(`✅ Toate fișierele au fost descărcate (${t})`,"success")},300*o)})}
-function escapeHtml(e){const t=document.createElement("div");return t.textContent=e,t.innerHTML}
-</script></body></html>
+<!DOCTYPE html>
+<html lang="ro">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Extractor Ierarhic Excel</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+    <style>
+        /* Toate stilurile rămân neschimbate - le păstrez identice */
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            padding: 20px;
+        }
+        .container { background: white; border-radius: 20px; box-shadow: 0 20px 60px rgba(0,0,0,0.3); max-width: 800px; width: 100%; padding: 40px; }
+        h1 { color: #333; margin-bottom: 10px; text-align: center; font-size: 28px; }
+        .subtitle { color: #666; text-align: center; margin-bottom: 30px; font-size: 14px; }
+        .upload-area { border: 3px dashed #667eea; border-radius: 15px; padding: 40px; text-align: center; cursor: pointer; transition: all 0.3s ease; background: #f8f9fa; margin-bottom: 20px; }
+        .upload-area:hover { border-color: #764ba2; background: #f0f1ff; transform: translateY(-2px); }
+        .upload-area.dragover { border-color: #764ba2; background: #e8e9ff; }
+        .upload-icon { font-size: 48px; margin-bottom: 15px; color: #667eea; }
+        .upload-text { font-size: 16px; color: #333; margin-bottom: 8px; }
+        .upload-hint { font-size: 13px; color: #999; }
+        input[type="file"] { display: none; }
+        #status { padding: 15px; border-radius: 10px; margin: 20px 0; font-size: 14px; display: none; }
+        #status.info { background: #d1ecf1; color: #0c5460; border: 1px solid #bee5eb; display: block; }
+        #status.success { background: #d4edda; color: #155724; border: 1px solid #c3e6cb; display: block; }
+        #status.error { background: #f8d7da; color: #721c24; border: 1px solid #f5c6cb; display: block; }
+        #status.warning { background: #fff3cd; color: #856404; border: 1px solid #ffeaa7; display: block; }
+        .results { margin-top: 25px; }
+        .coordinator-item { background: #f8f9fa; border: 1px solid #e0e0e0; border-radius: 10px; padding: 15px; margin-bottom: 12px; display: flex; justify-content: space-between; align-items: center; transition: all 0.2s ease; }
+        .coordinator-item:hover { box-shadow: 0 4px 12px rgba(0,0,0,0.1); transform: translateX(5px); }
+        .coordinator-info { flex: 1; }
+        .coordinator-name { font-weight: 600; color: #333; margin-bottom: 5px; font-size: 15px; }
+        .coordinator-code { font-size: 12px; color: #666; font-family: 'Courier New', monospace; }
+        .coordinator-count { background: #667eea; color: white; padding: 5px 12px; border-radius: 20px; font-size: 13px; font-weight: 600; margin-right: 10px; }
+        .download-btn { background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; border: none; padding: 10px 20px; border-radius: 8px; cursor: pointer; font-size: 14px; font-weight: 600; transition: all 0.3s ease; box-shadow: 0 4px 12px rgba(102,126,234,0.4); }
+        .download-btn:hover { transform: translateY(-2px); box-shadow: 0 6px 16px rgba(102,126,234,0.6); }
+        .download-all-btn { width: 100%; padding: 15px; font-size: 16px; margin-top: 20px; background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%); }
+        .loader { border: 3px solid #f3f3f3; border-top: 3px solid #667eea; border-radius: 50%; width: 30px; height: 30px; animation: spin 1s linear infinite; margin: 20px auto; display: none; }
+        @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
+        .stats { background: linear-gradient(135deg, #667eea15 0%, #764ba215 100%); border-radius: 10px; padding: 20px; margin-top: 20px; display: none; }
+        .stats-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 15px; }
+        .stat-item { text-align: center; }
+        .stat-value { font-size: 28px; font-weight: bold; color: #667eea; margin-bottom: 5px; }
+        .stat-label { font-size: 13px; color: #666; }
+        @media (max-width: 600px) {
+            .container { padding: 25px; }
+            h1 { font-size: 22px; }
+            .coordinator-item { flex-direction: column; align-items: flex-start; }
+            .coordinator-count { margin: 10px 0; }
+            .download-btn { width: 100%; margin-top: 10px; }
+        }
+    </style>
+</head>
+<body>
+    <img src="https://i.pinimg.com/736x/47/8e/4e/478e4e95f4bf8d1452e92134e9f872fa.jpg" alt="Logo" style="position: fixed; top: 15px; left: 15px; width: 40px; height: 40px; border-radius: 8px; box-shadow: 0 4px 12px rgba(0,0,0,0.2);">
+    <div class="container">
+        <h1>📊 Extractor Ierarhic Excel</h1>
+        <p class="subtitle">Încarcă fișierul Excel și descarcă fișiere separate pe nivele ierarhice</p>
+        
+        <div class="upload-area" id="uploadArea">
+            <div class="upload-icon">📁</div>
+            <div class="upload-text">Trage fișierul aici sau click pentru a selecta</div>
+            <div class="upload-hint">Format acceptat: .xlsx, .xls</div>
+            <input type="file" id="fileInput" accept=".xlsx,.xls">
+        </div>
+
+        <div class="loader" id="loader"></div>
+        <div id="status"></div>
+
+        <div class="stats" id="stats">
+            <div class="stats-grid">
+                <div class="stat-item">
+                    <div class="stat-value" id="totalCoordinators">0</div>
+                    <div class="stat-label">Coordonatori</div>
+                </div>
+                <div class="stat-item">
+                    <div class="stat-value" id="totalRows">0</div>
+                    <div class="stat-label">Rânduri totale</div>
+                </div>
+                <div class="stat-item">
+                    <div class="stat-value" id="filesGenerated">0</div>
+                    <div class="stat-label">Fișiere generate</div>
+                </div>
+            </div>
+        </div>
+
+        <div class="results" id="results"></div>
+    </div>
+
+    <script>
+        const uploadArea = document.getElementById('uploadArea');
+        const fileInput = document.getElementById('fileInput');
+        const status = document.getElementById('status');
+        const loader = document.getElementById('loader');
+        const results = document.getElementById('results');
+        const statsDiv = document.getElementById('stats');
+
+        let processedData = {};
+        let dataRows = []; // Vom stoca rândurile de date global pentru acces în download
+
+        // Upload handlers (neschimbate)
+        uploadArea.addEventListener('click', () => fileInput.click());
+        uploadArea.addEventListener('dragover', (e) => { e.preventDefault(); uploadArea.classList.add('dragover'); });
+        uploadArea.addEventListener('dragleave', () => uploadArea.classList.remove('dragover'));
+        uploadArea.addEventListener('drop', (e) => {
+            e.preventDefault();
+            uploadArea.classList.remove('dragover');
+            if (e.dataTransfer.files.length > 0) handleFile(e.dataTransfer.files[0]);
+        });
+        fileInput.addEventListener('change', (e) => {
+            if (e.target.files.length > 0) handleFile(e.target.files[0]);
+        });
+
+        function showStatus(message, type) {
+            status.textContent = message;
+            status.className = type;
+        }
+
+        function showLoader(show) {
+            loader.style.display = show ? 'block' : 'none';
+        }
+
+        function handleFile(file) {
+            if (!file.name.match(/\.(xlsx|xls)$/)) {
+                showStatus('❌ Te rog selectează un fișier Excel valid (.xlsx sau .xls)', 'error');
+                return;
+            }
+
+            showLoader(true);
+            showStatus('📖 Citesc fișierul...', 'info');
+            results.innerHTML = '';
+            statsDiv.style.display = 'none';
+
+            const reader = new FileReader();
+            reader.onload = (e) => {
+                try {
+                    processExcelFile(e.target.result, file.name);
+                } catch (error) {
+                    showLoader(false);
+                    showStatus('❌ Eroare la procesarea fișierului: ' + error.message, 'error');
+                    console.error(error);
+                }
+            };
+            reader.readAsArrayBuffer(file);
+        }
+
+        function normalizeNameForComparison(name) {
+            if (!name) return '';
+            return String(name).trim().replace(/\.+$/g, '').replace(/\s+/g, ' ').replace(/-+/g, '-').toUpperCase();
+        }
+
+        function processExcelFile(data, originalFileName) {
+            const workbook = XLSX.read(data, { type: 'array' });
+            const sheetName = workbook.SheetNames[0];
+            const worksheet = workbook.Sheets[sheetName];
+            
+            const jsonData = XLSX.utils.sheet_to_json(worksheet, { header: 1, defval: '', raw: false });
+
+            let headerRowIndex = -1;
+            const requiredColumns = ['Cod ccoordonator', 'Coordonator', 'Nume Prenume'];
+            
+            for (let i = 0; i < Math.min(20, jsonData.length); i++) {
+                const rowStr = jsonData[i].join('|').toLowerCase();
+                if (requiredColumns.every(col => rowStr.includes(col.toLowerCase()))) {
+                    headerRowIndex = i;
+                    break;
+                }
+            }
+            
+            if (headerRowIndex === -1) {
+                showLoader(false);
+                showStatus('❌ Nu am găsit header-ul necesar în primele 20 de rânduri.', 'error');
+                return;
+            }
+            
+            const headers = jsonData[headerRowIndex];
+            const coordNameColIndex = headers.indexOf('Coordonator');
+            const nameColIndex = headers.indexOf('Nume Prenume');
+
+            if (coordNameColIndex === -1 || nameColIndex === -1) {
+                showLoader(false);
+                showStatus('❌ Coloanele necesare lipsesc.', 'error');
+                return;
+            }
+
+            dataRows = jsonData.slice(headerRowIndex + 1); // Stocăm global pentru download
+
+            const bossToSubs = {};
+            const subToBoss = {};
+            const originalNames = {};
+
+            dataRows.forEach((row) => {
+                const coordName = row[coordNameColIndex];
+                const personName = row[nameColIndex];
+                
+                const normCoord = normalizeNameForComparison(coordName);
+                const normPerson = normalizeNameForComparison(personName);
+                
+                if (normCoord) originalNames[normCoord] = coordName;
+                if (normPerson && normCoord) {
+                    originalNames[normPerson] = personName;
+                    if (!bossToSubs[normCoord]) bossToSubs[normCoord] = [];
+                    bossToSubs[normCoord].push(normPerson);
+                    subToBoss[normPerson] = normCoord;
+                }
+            });
+
+            const allCoordNames = new Set(Object.keys(bossToSubs));
+            const allPersonNames = new Set(Object.keys(subToBoss));
+            let topLevelCoordinators = [...allCoordNames].filter(name => !allPersonNames.has(name));
+
+            if (topLevelCoordinators.length === 0) {
+                showLoader(false);
+                showStatus('❌ Nu am găsit coordonatori nivel top.', 'error');
+                return;
+            }
+
+            let currentCoordinators = topLevelCoordinators;
+
+            while (currentCoordinators.length === 1) {
+                const single = currentCoordinators[0];
+                const directSubs = bossToSubs[single] || [];
+                const subCoords = directSubs.filter(sub => bossToSubs[sub]);
+                if (subCoords.length === 0) break;
+                currentCoordinators = subCoords;
+            }
+
+            showStatus(`🔍 Găsite ${currentCoordinators.length} coordonatori efectivi`, 'info');
+
+            const allDirectReports = {};
+
+            currentCoordinators.forEach(normName => {
+                const originalName = originalNames[normName] || normName;
+                const reportsToNorm = subToBoss[normName];
+                const reportsToOriginal = reportsToNorm ? originalNames[reportsToNorm] || 'DESTINE' : 'DESTINE';
+                
+                const allSubs = getAllSubordinatesRecursive(originalName, dataRows, nameColIndex, coordNameColIndex);
+                
+                if (allSubs.length > 0) {
+                    allDirectReports[normName] = {
+                        originalName: originalName,
+                        reportsTo: reportsToOriginal,
+                        allSubordinates: allSubs,
+                        coordinatorRow: findPersonRow(originalName, dataRows, nameColIndex) // rândul coordonatorului
+                    };
+                }
+            });
+
+            const effectiveTopLevelNames = currentCoordinators.map(norm => originalNames[norm] || norm);
+
+            processedData = {
+                topLevelCoordinators: effectiveTopLevelNames,
+                directReports: allDirectReports,
+                headers: headers,
+                originalWorkbook: workbook,
+                originalFileName: originalFileName
+            };
+
+            displayResults();
+            showLoader(false);
+
+            const totalSubordinates = Object.values(allDirectReports).reduce((sum, r) => sum + r.allSubordinates.length, 0);
+            document.getElementById('totalCoordinators').textContent = Object.keys(allDirectReports).length;
+            document.getElementById('totalRows').textContent = totalSubordinates + Object.keys(allDirectReports).length; // + coordonatorii înșiși
+            document.getElementById('filesGenerated').textContent = Object.keys(allDirectReports).length;
+            statsDiv.style.display = 'block';
+
+            showStatus(`✅ Procesare completă! ${Object.keys(allDirectReports).length} fișiere gata de descărcare (inclusiv coordonatorul în fiecare).`, 'success');
+        }
+
+        function findPersonRow(personName, rows, nameColIndex) {
+            const normTarget = normalizeNameForComparison(personName);
+            for (const row of rows) {
+                const personInRow = row[nameColIndex];
+                if (normalizeNameForComparison(personInRow) === normTarget) {
+                    return row;
+                }
+            }
+            return null;
+        }
+
+        function getAllSubordinatesRecursive(coordinatorName, rows, nameColIndex, coordNameColIndex) {
+            const allSubordinates = [];
+            const normalizedCoordinatorName = normalizeNameForComparison(coordinatorName);
+            
+            rows.forEach((row) => {
+                const coordName = row[coordNameColIndex];
+                const personName = row[nameColIndex];
+                
+                if (!personName || String(personName).trim() === '') return;
+                
+                if (normalizeNameForComparison(coordName) === normalizedCoordinatorName) {
+                    allSubordinates.push({
+                        rowData: row,
+                        personName: personName
+                    });
+                    
+                    const theirSubs = getAllSubordinatesRecursive(personName, rows, nameColIndex, coordNameColIndex);
+                    allSubordinates.push(...theirSubs);
+                }
+            });
+            
+            return allSubordinates;
+        }
+
+        function displayResults() {
+            const { topLevelCoordinators, directReports } = processedData;
+            
+            let html = '';
+            const topList = topLevelCoordinators.slice(0, 5).join(', ') + (topLevelCoordinators.length > 5 ? `, ... (+${topLevelCoordinators.length - 5})` : '');
+            
+            html += `
+                <div class="coordinator-item" style="background: linear-gradient(135deg, #667eea15 0%, #764ba215 100%); border: 2px solid #667eea;">
+                    <div class="coordinator-info">
+                        <div class="coordinator-name">📊 Coordonatori nivel curent: ${topLevelCoordinators.length}</div>
+                        <div class="coordinator-code">${escapeHtml(topList)}</div>
+                    </div>
+                </div>
+            `;
+
+            const sorted = Object.entries(directReports).sort((a, b) => b[1].allSubordinates.length - a[1].allSubordinates.length);
+
+            sorted.forEach(([normName, data]) => {
+                const count = data.allSubordinates.length + 1; // +1 pentru coordonator
+                html += `
+                    <div class="coordinator-item">
+                        <div class="coordinator-info">
+                            <div class="coordinator-name">${escapeHtml(data.originalName)}</div>
+                            <div class="coordinator-code">Raportează la: ${escapeHtml(data.reportsTo)}</div>
+                        </div>
+                        <span class="coordinator-count">${count} persoane (inclusiv coord.)</span>
+                        <button class="download-btn" onclick="downloadCoordinatorFile('${escapeHtml(normName)}')">
+                            ⬇️ Descarcă
+                        </button>
+                    </div>
+                `;
+            });
+
+            html += `
+                <button class="download-btn download-all-btn" onclick="downloadAllFiles()">
+                    📦 Descarcă toate fișierele (${sorted.length})
+                </button>
+            `;
+
+            results.innerHTML = html;
+        }
+
+        function downloadCoordinatorFile(normalizedName) {
+            const { directReports, headers, originalWorkbook } = processedData;
+            const reportData = directReports[normalizedName];
+            
+            if (!reportData) {
+                showStatus('❌ Datele coordonatorului nu au fost găsite.', 'error');
+                return;
+            }
+
+            const coordName = reportData.originalName;
+            const coordinatorRow = reportData.coordinatorRow;
+            const allSubordinates = reportData.allSubordinates;
+
+            const newWorkbook = XLSX.utils.book_new();
+            
+            const exportData = [headers];
+            
+            // Adăugăm mai întâi rândul coordonatorului (dacă există)
+            if (coordinatorRow) {
+                exportData.push(coordinatorRow);
+            }
+            
+            // Apoi toți subordonații
+            allSubordinates.forEach(sub => exportData.push(sub.rowData));
+
+            const worksheet = XLSX.utils.aoa_to_sheet(exportData);
+            
+            if (originalWorkbook.Sheets[originalWorkbook.SheetNames[0]]['!cols']) {
+                worksheet['!cols'] = originalWorkbook.Sheets[originalWorkbook.SheetNames[0]]['!cols'];
+            }
+
+            XLSX.utils.book_append_sheet(newWorkbook, worksheet, 'Date');
+
+            const safeName = coordName.replace(/[^a-zA-Z0-9-_\s]/g, '_').replace(/\s+/g, '_');
+            const fileName = `${safeName}.xlsx`;
+
+            XLSX.writeFile(newWorkbook, fileName);
+            
+            const totalPersons = (coordinatorRow ? 1 : 0) + allSubordinates.length;
+            showStatus(`✅ Descărcat: ${fileName} (${totalPersons} persoane, inclusiv coordonatorul)`, 'success');
+        }
+
+        function downloadAllFiles() {
+            const { directReports } = processedData;
+            let count = 0;
+            showStatus('📦 Se descarcă toate fișierele...', 'info');
+            
+            Object.keys(directReports).forEach((normName, i) => {
+                setTimeout(() => {
+                    downloadCoordinatorFile(normName);
+                    count++;
+                    if (count === Object.keys(directReports).length) {
+                        showStatus(`✅ Toate ${count} fișierele au fost descărcate!`, 'success');
+                    }
+                }, i * 300);
+            });
+        }
+
+        function escapeHtml(text) {
+            const div = document.createElement('div');
+            div.textContent = text;
+            return div.innerHTML;
+        }
+    </script>
+</body>
+</html>

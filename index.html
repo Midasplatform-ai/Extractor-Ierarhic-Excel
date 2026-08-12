@@ -153,7 +153,9 @@
 
         function normalizeNameForComparison(name) {
             if (!name) return '';
-            return String(name).trim().replace(/\.+$/g, '').replace(/\s+/g, ' ').replace(/-+/g, '-').toUpperCase();
+            // Punctele finale sunt IDENTIFICATORI intenționați ("BOCANESCU ROMEO" vs "BOCANESCU ROMEO..")
+            // — le păstrăm. Normalizăm doar spațiile (inclusiv cele dinaintea punctelor) și cratimele.
+            return String(name).replace(/\s+/g, ' ').replace(/\s+\./g, '.').replace(/-+/g, '-').trim().toUpperCase();
         }
 
         function processExcelFile(data, originalFileName) {
@@ -227,31 +229,57 @@
                 return;
             }
 
-            // Calculăm nivelul fiecărui coordonator prin BFS de la vârf
-            const levelByNorm = {};
-            let queue = topLevelCoordinators.slice();
-            topLevelCoordinators.forEach(n => levelByNorm[n] = 0);
-            while (queue.length > 0) {
+            // "DESTINE" / "MOLDOVA DESTINE" sunt compania (placeholder), nu persoane reale —
+            // le sărim (recursiv, în caz că sunt înlănțuite) și trecem la coordonatorii de sub ele
+            const isPlaceholder = (norm) => /\bDESTINE\b/.test(norm);
+
+            const realCoordinators = new Set();
+            const visitedRoots = new Set();
+            let frontier = topLevelCoordinators.slice();
+            while (frontier.length > 0) {
                 const next = [];
-                queue.forEach(boss => {
-                    (bossToSubs[boss] || []).forEach(sub => {
-                        if (levelByNorm[sub] === undefined) {
-                            levelByNorm[sub] = levelByNorm[boss] + 1;
-                            next.push(sub);
-                        }
-                    });
+                frontier.forEach(norm => {
+                    if (visitedRoots.has(norm)) return;
+                    visitedRoots.add(norm);
+                    if (isPlaceholder(norm)) {
+                        (bossToSubs[norm] || []).forEach(sub => {
+                            if (bossToSubs[sub]) next.push(sub);
+                        });
+                    } else {
+                        realCoordinators.add(norm);
+                    }
                 });
-                queue = next;
+                frontier = next;
+            }
+            let currentCoordinators = [...realCoordinators];
+
+            // Dacă un coordonator acoperă aproape tot fișierul (>=90% din rânduri),
+            // fișierul este chiar echipa LUI, deci coborâm la nivelul următor:
+            // coordonatorii direcți de sub el. Ramurile mici rămân listate separat.
+            const totalPeople = dataRows.filter(r => normalizeNameForComparison(r[nameColIndex])).length;
+            const subtreeSize = (norm) => collectSubtree(norm, bossToSubRows).length + (personRowByNorm[norm] ? 1 : 0);
+
+            let descended = true;
+            while (descended) {
+                descended = false;
+                for (const norm of currentCoordinators) {
+                    if (subtreeSize(norm) >= 0.9 * totalPeople) {
+                        const subCoords = (bossToSubs[norm] || []).filter(sub => bossToSubs[sub]);
+                        if (subCoords.length > 0) {
+                            currentCoordinators = currentCoordinators.filter(c => c !== norm).concat(subCoords);
+                            currentCoordinators = [...new Set(currentCoordinators)];
+                            descended = true;
+                            break;
+                        }
+                    }
+                }
             }
 
-            // TOȚI coordonatorii (orice persoană cu subordonați), de la orice nivel
-            const allCoordinatorNorms = Object.keys(bossToSubs);
-
-            showStatus(`🔍 Găsite ${allCoordinatorNorms.length} coordonatori (toate nivelele)`, 'info');
+            showStatus(`🔍 Găsite ${currentCoordinators.length} coordonatori pe nivelul următor`, 'info');
 
             const allDirectReports = {};
 
-            allCoordinatorNorms.forEach(normName => {
+            currentCoordinators.forEach(normName => {
                 const originalName = originalNames[normName] || normName;
                 const reportsToNorm = subToBoss[normName];
                 const reportsToOriginal = reportsToNorm ? originalNames[reportsToNorm] || 'DESTINE' : 'DESTINE';
@@ -262,15 +290,13 @@
                     allDirectReports[normName] = {
                         originalName: originalName,
                         reportsTo: reportsToOriginal,
-                        parentNorm: reportsToNorm || null,
-                        level: levelByNorm[normName] !== undefined ? levelByNorm[normName] : 0,
                         allSubordinates: allSubs,
                         coordinatorRow: personRowByNorm[normName] || null // rândul coordonatorului
                     };
                 }
             });
 
-            const effectiveTopLevelNames = topLevelCoordinators.map(norm => originalNames[norm] || norm);
+            const effectiveTopLevelNames = currentCoordinators.map(norm => originalNames[norm] || norm);
 
             processedData = {
                 topLevelCoordinators: effectiveTopLevelNames,
@@ -318,40 +344,21 @@
             html += `
                 <div class="coordinator-item" style="background: linear-gradient(135deg, #667eea15 0%, #764ba215 100%); border: 2px solid #667eea;">
                     <div class="coordinator-info">
-                        <div class="coordinator-name">📊 Coordonatori vârf: ${topLevelCoordinators.length} — fișiere pentru toate nivelele: ${Object.keys(directReports).length}</div>
+                        <div class="coordinator-name">📊 Coordonatori nivel următor: ${topLevelCoordinators.length}</div>
                         <div class="coordinator-code">${escapeHtml(topList)}</div>
                     </div>
                 </div>
             `;
 
-            // Ordine de arbore (DFS): fiecare coordonator apare imediat sub părintele lui,
-            // frații sortați descrescător după mărimea echipei
-            const childrenOf = {};
-            const roots = [];
-            Object.entries(directReports).forEach(([normName, data]) => {
-                if (data.parentNorm && directReports[data.parentNorm]) {
-                    if (!childrenOf[data.parentNorm]) childrenOf[data.parentNorm] = [];
-                    childrenOf[data.parentNorm].push(normName);
-                } else {
-                    roots.push(normName);
-                }
-            });
-            const bySize = (a, b) => directReports[b].allSubordinates.length - directReports[a].allSubordinates.length;
-            const sorted = [];
-            const pushDFS = (normName) => {
-                sorted.push([normName, directReports[normName]]);
-                (childrenOf[normName] || []).sort(bySize).forEach(pushDFS);
-            };
-            roots.sort(bySize).forEach(pushDFS);
+            const sorted = Object.entries(directReports).sort((a, b) => b[1].allSubordinates.length - a[1].allSubordinates.length);
 
             sorted.forEach(([normName, data]) => {
                 const count = data.allSubordinates.length + (data.coordinatorRow ? 1 : 0); // +1 doar dacă coordonatorul are rând propriu
-                const indent = Math.min(data.level, 6) * 18;
                 html += `
-                    <div class="coordinator-item" style="margin-left: ${indent}px;">
+                    <div class="coordinator-item">
                         <div class="coordinator-info">
                             <div class="coordinator-name">${escapeHtml(data.originalName)}</div>
-                            <div class="coordinator-code">Nivel ${data.level} · Raportează la: ${escapeHtml(data.reportsTo)}</div>
+                            <div class="coordinator-code">Raportează la: ${escapeHtml(data.reportsTo)}</div>
                         </div>
                         <span class="coordinator-count">${count} persoane (inclusiv coord.)</span>
                         <button class="download-btn" onclick="downloadCoordinatorFile('${escapeHtml(normName)}')">

@@ -6,6 +6,7 @@
     <title>Extractor Ierarhic Excel</title>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
     <style>
+        /* Toate stilurile rămân neschimbate - le păstrez identice */
         * { margin: 0; padding: 0; box-sizing: border-box; }
         body {
             font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
@@ -194,20 +195,25 @@
             const bossToSubs = {};
             const subToBoss = {};
             const originalNames = {};
+            const bossToSubRows = {};   // normCoord -> [{norm, name, row}]
+            const personRowByNorm = {}; // normPerson -> rândul propriu al persoanei
 
             dataRows.forEach((row) => {
                 const coordName = row[coordNameColIndex];
                 const personName = row[nameColIndex];
-                
+
                 const normCoord = normalizeNameForComparison(coordName);
                 const normPerson = normalizeNameForComparison(personName);
-                
+
                 if (normCoord) originalNames[normCoord] = coordName;
                 if (normPerson && normCoord) {
                     originalNames[normPerson] = personName;
                     if (!bossToSubs[normCoord]) bossToSubs[normCoord] = [];
                     bossToSubs[normCoord].push(normPerson);
                     subToBoss[normPerson] = normCoord;
+                    if (!bossToSubRows[normCoord]) bossToSubRows[normCoord] = [];
+                    bossToSubRows[normCoord].push({ norm: normPerson, name: personName, row: row });
+                    if (!personRowByNorm[normPerson]) personRowByNorm[normPerson] = row;
                 }
             });
 
@@ -221,38 +227,50 @@
                 return;
             }
 
-            let currentCoordinators = topLevelCoordinators;
-
-            while (currentCoordinators.length === 1) {
-                const single = currentCoordinators[0];
-                const directSubs = bossToSubs[single] || [];
-                const subCoords = directSubs.filter(sub => bossToSubs[sub]);
-                if (subCoords.length === 0) break;
-                currentCoordinators = subCoords;
+            // Calculăm nivelul fiecărui coordonator prin BFS de la vârf
+            const levelByNorm = {};
+            let queue = topLevelCoordinators.slice();
+            topLevelCoordinators.forEach(n => levelByNorm[n] = 0);
+            while (queue.length > 0) {
+                const next = [];
+                queue.forEach(boss => {
+                    (bossToSubs[boss] || []).forEach(sub => {
+                        if (levelByNorm[sub] === undefined) {
+                            levelByNorm[sub] = levelByNorm[boss] + 1;
+                            next.push(sub);
+                        }
+                    });
+                });
+                queue = next;
             }
 
-            showStatus(`🔍 Găsite ${currentCoordinators.length} coordonatori efectivi`, 'info');
+            // TOȚI coordonatorii (orice persoană cu subordonați), de la orice nivel
+            const allCoordinatorNorms = Object.keys(bossToSubs);
+
+            showStatus(`🔍 Găsite ${allCoordinatorNorms.length} coordonatori (toate nivelele)`, 'info');
 
             const allDirectReports = {};
 
-            currentCoordinators.forEach(normName => {
+            allCoordinatorNorms.forEach(normName => {
                 const originalName = originalNames[normName] || normName;
                 const reportsToNorm = subToBoss[normName];
                 const reportsToOriginal = reportsToNorm ? originalNames[reportsToNorm] || 'DESTINE' : 'DESTINE';
-                
-                const allSubs = getAllSubordinatesRecursive(originalName, dataRows, nameColIndex, coordNameColIndex);
-                
+
+                const allSubs = collectSubtree(normName, bossToSubRows);
+
                 if (allSubs.length > 0) {
                     allDirectReports[normName] = {
                         originalName: originalName,
                         reportsTo: reportsToOriginal,
+                        parentNorm: reportsToNorm || null,
+                        level: levelByNorm[normName] !== undefined ? levelByNorm[normName] : 0,
                         allSubordinates: allSubs,
-                        coordinatorRow: findPersonRow(originalName, dataRows, nameColIndex) // rândul coordonatorului
+                        coordinatorRow: personRowByNorm[normName] || null // rândul coordonatorului
                     };
                 }
             });
 
-            const effectiveTopLevelNames = currentCoordinators.map(norm => originalNames[norm] || norm);
+            const effectiveTopLevelNames = topLevelCoordinators.map(norm => originalNames[norm] || norm);
 
             processedData = {
                 topLevelCoordinators: effectiveTopLevelNames,
@@ -265,47 +283,29 @@
             displayResults();
             showLoader(false);
 
-            const totalSubordinates = Object.values(allDirectReports).reduce((sum, r) => sum + r.allSubordinates.length, 0);
             document.getElementById('totalCoordinators').textContent = Object.keys(allDirectReports).length;
-            document.getElementById('totalRows').textContent = totalSubordinates + Object.keys(allDirectReports).length; // + coordonatorii înșiși
+            document.getElementById('totalRows').textContent = dataRows.filter(r => normalizeNameForComparison(r[nameColIndex])).length;
             document.getElementById('filesGenerated').textContent = Object.keys(allDirectReports).length;
             statsDiv.style.display = 'block';
 
             showStatus(`✅ Procesare completă! ${Object.keys(allDirectReports).length} fișiere gata de descărcare (inclusiv coordonatorul în fiecare).`, 'success');
         }
 
-        function findPersonRow(personName, rows, nameColIndex) {
-            const normTarget = normalizeNameForComparison(personName);
-            for (const row of rows) {
-                const personInRow = row[nameColIndex];
-                if (normalizeNameForComparison(personInRow) === normTarget) {
-                    return row;
-                }
-            }
-            return null;
-        }
-
-        function getAllSubordinatesRecursive(coordinatorName, rows, nameColIndex, coordNameColIndex) {
+        function collectSubtree(normName, bossToSubRows, visited) {
+            if (!visited) visited = new Set([normName]);
             const allSubordinates = [];
-            const normalizedCoordinatorName = normalizeNameForComparison(coordinatorName);
-            
-            rows.forEach((row) => {
-                const coordName = row[coordNameColIndex];
-                const personName = row[nameColIndex];
-                
-                if (!personName || String(personName).trim() === '') return;
-                
-                if (normalizeNameForComparison(coordName) === normalizedCoordinatorName) {
-                    allSubordinates.push({
-                        rowData: row,
-                        personName: personName
-                    });
-                    
-                    const theirSubs = getAllSubordinatesRecursive(personName, rows, nameColIndex, coordNameColIndex);
-                    allSubordinates.push(...theirSubs);
-                }
+            const children = bossToSubRows[normName] || [];
+
+            children.forEach(child => {
+                if (visited.has(child.norm)) return; // protecție împotriva ciclurilor
+                visited.add(child.norm);
+                allSubordinates.push({
+                    rowData: child.row,
+                    personName: child.name
+                });
+                allSubordinates.push(...collectSubtree(child.norm, bossToSubRows, visited));
             });
-            
+
             return allSubordinates;
         }
 
@@ -318,21 +318,40 @@
             html += `
                 <div class="coordinator-item" style="background: linear-gradient(135deg, #667eea15 0%, #764ba215 100%); border: 2px solid #667eea;">
                     <div class="coordinator-info">
-                        <div class="coordinator-name">📊 Coordonatori nivel curent: ${topLevelCoordinators.length}</div>
+                        <div class="coordinator-name">📊 Coordonatori vârf: ${topLevelCoordinators.length} — fișiere pentru toate nivelele: ${Object.keys(directReports).length}</div>
                         <div class="coordinator-code">${escapeHtml(topList)}</div>
                     </div>
                 </div>
             `;
 
-            const sorted = Object.entries(directReports).sort((a, b) => b[1].allSubordinates.length - a[1].allSubordinates.length);
+            // Ordine de arbore (DFS): fiecare coordonator apare imediat sub părintele lui,
+            // frații sortați descrescător după mărimea echipei
+            const childrenOf = {};
+            const roots = [];
+            Object.entries(directReports).forEach(([normName, data]) => {
+                if (data.parentNorm && directReports[data.parentNorm]) {
+                    if (!childrenOf[data.parentNorm]) childrenOf[data.parentNorm] = [];
+                    childrenOf[data.parentNorm].push(normName);
+                } else {
+                    roots.push(normName);
+                }
+            });
+            const bySize = (a, b) => directReports[b].allSubordinates.length - directReports[a].allSubordinates.length;
+            const sorted = [];
+            const pushDFS = (normName) => {
+                sorted.push([normName, directReports[normName]]);
+                (childrenOf[normName] || []).sort(bySize).forEach(pushDFS);
+            };
+            roots.sort(bySize).forEach(pushDFS);
 
             sorted.forEach(([normName, data]) => {
-                const count = data.allSubordinates.length + 1; // +1 pentru coordonator
+                const count = data.allSubordinates.length + (data.coordinatorRow ? 1 : 0); // +1 doar dacă coordonatorul are rând propriu
+                const indent = Math.min(data.level, 6) * 18;
                 html += `
-                    <div class="coordinator-item">
+                    <div class="coordinator-item" style="margin-left: ${indent}px;">
                         <div class="coordinator-info">
                             <div class="coordinator-name">${escapeHtml(data.originalName)}</div>
-                            <div class="coordinator-code">Raportează la: ${escapeHtml(data.reportsTo)}</div>
+                            <div class="coordinator-code">Nivel ${data.level} · Raportează la: ${escapeHtml(data.reportsTo)}</div>
                         </div>
                         <span class="coordinator-count">${count} persoane (inclusiv coord.)</span>
                         <button class="download-btn" onclick="downloadCoordinatorFile('${escapeHtml(normName)}')">
